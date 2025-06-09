@@ -216,6 +216,15 @@ def main():
         print("❌ timeline.json 파일이 존재하지 않습니다.")
         return
 
+    # 기존 output 폴더와 파일 완전 삭제
+    if os.path.exists("output"):
+        print("🧹 기존 output 폴더 삭제 중...")
+        shutil.rmtree("output")
+        print("✅ 기존 파일 삭제 완료")
+
+    # 잠시 대기 (파일 시스템 동기화)
+    time.sleep(0.5)
+
     try:
         df = load_json(input_json)
         print(f"📊 {len(df)}개의 타임라인 항목을 처리합니다.")
