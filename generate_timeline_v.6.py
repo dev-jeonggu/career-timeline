@@ -179,12 +179,6 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
             date_label = f'({start_str}–{end_str})'
             ax.text(center_x, current_bar_y + 0.25, date_label, ha='center', va='bottom', fontsize=6, color='black')
 
-    # 시작/종료 라벨 하단
-    ax.text(timeline_start, -0.1, f"{timeline_start.strftime('%m.%d.%Y')}\nProject Start",
-            fontsize=8, ha='left', va='top', color='blue')
-    ax.text(timeline_end, -0.1, f"{timeline_end.strftime('%m.%d.%Y')}\nProject End",
-            fontsize=8, ha='right', va='top', color='blue')
-
     # 축 정리
     ax.set_ylim(-0.6, 2.4)
     ax.set_xlim(timeline_start, timeline_end)
