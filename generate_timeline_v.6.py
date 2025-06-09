@@ -50,7 +50,8 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
     category_colors = {
         "교육": "#90be6d",
         "근무": "#577590",
-        "자격증": "#f9c74f"
+        "자격증": "#f9c74f",
+        "수상": "#ffcce5"
     }
 
     fig, ax = plt.subplots(figsize=(27, 7))
