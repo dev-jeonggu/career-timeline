@@ -35,6 +35,8 @@ import json
 
 from datetime import datetime
 import os
+import shutil
+import time
 
 # JSON 데이터 로드
 def load_json(json_path):
@@ -54,18 +56,24 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
         "수상": "#ffcce5"
     }
 
-    fig, ax = plt.subplots(figsize=(27, 7))
-    bar_y = 0.6
+    fig, ax = plt.subplots(figsize=(32, 10))
+    bar_y = 0.8
     bar_height = 0.35
     arrow_height = 0.15
     day_event_offsets = {}  # key: rounded date → layer index
-    layer_gap = 0.15        # 계단 간격 (줄임)
-    max_layer = 10          # 최대 몇 층까지 허용할지
+    layer_gap = 0.25
 
     # 배경 회색 바 (하단 타임라인)
-    buffer_days = 90
-    timeline_start = df["start"].min() - pd.Timedelta(days=buffer_days)
-    timeline_end = df["end"].max() + pd.Timedelta(days=buffer_days)
+    timeline_start = df["start"].min()
+    timeline_end = df["end"].max()
+
+    # 여백을 좀 더 늘려서 2017년이 안 짤리게
+    buffer_start_days = 45  # 15 → 45일로 증가
+    buffer_end_days = 365  # 오른쪽 여백을 1년으로 늘림
+    timeline_start = timeline_start - pd.Timedelta(days=buffer_start_days)
+    timeline_end = timeline_end + pd.Timedelta(days=buffer_end_days)
+
+    print(f"🕐 시간 범위: {timeline_start.strftime('%Y-%m-%d')} ~ {timeline_end.strftime('%Y-%m-%d')}")
 
     ax.add_patch(patches.Rectangle(
         (mdates.date2num(timeline_start), 0),
@@ -75,11 +83,20 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
         zorder=0
     ))
 
-    # 하단 월 텍스트
-    current = timeline_start.replace(month=1, day=1)
-    while current <= timeline_end:
-        ax.text(current, 0.075, current.strftime('%Y'), ha='center', va='center', color='white', fontsize=8)
-        current += pd.DateOffset(years=1)
+    # 하단 년도 텍스트 - 데이터 범위에 맞게 조정
+    start_year = df["start"].min().year
+    end_year = df["end"].max().year + 1
+
+    for year in range(start_year, end_year + 1):
+        year_date = datetime(year, 1, 1)
+        # 시간 범위 내에 있는 년도만 표시
+        if timeline_start <= year_date <= timeline_end:
+            ax.text(year_date, 0.075, str(year), ha='center', va='center', color='white', fontsize=14)
+        else:
+            # 범위를 벗어나도 데이터에 해당하는 년도면 표시 (예: 2017년 첫 데이터)
+            year_data_in_df = df[df["start"].dt.year == year]["start"].min()
+            if pd.notna(year_data_in_df) and timeline_start <= year_data_in_df <= timeline_end:
+                ax.text(year_data_in_df, 0.075, str(year), ha='center', va='center', color='white', fontsize=14)
 
     # 기간이 있는 항목들의 레이어를 계산하기 위한 함수
     def calculate_layer_for_duration_items(df):
@@ -92,13 +109,16 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
         layers = {}  # index -> layer
         occupied_layers = []  # [(start, end, layer), ...]
 
+        # 최대 레이어 제한 설정
+        MAX_LAYERS = 5  # 최대 5단계까지 올라가도록 늘림
+
         for original_idx, row in duration_items.iterrows():
             start_date = row['start']
             end_date = row['end']
 
             # 현재 항목과 겹치는 레이어들 찾기
             current_layer = 0
-            while True:
+            while current_layer < MAX_LAYERS:  # 최대 레이어 제한
                 # 현재 레이어에서 겹치는 항목이 있는지 확인
                 overlap = False
                 for occ_start, occ_end, occ_layer in occupied_layers:
@@ -112,6 +132,10 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
                     break
                 current_layer += 1
 
+            # 최대 레이어에 도달하면 그냥 그 레이어에 배치
+            if current_layer >= MAX_LAYERS:
+                current_layer = MAX_LAYERS - 1
+
             layers[original_idx] = current_layer
             occupied_layers.append((start_date, end_date, current_layer))
 
@@ -122,10 +146,21 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
 
     for row in df.itertuples():
         color = category_colors.get(row.category, "#cccccc")
-        if hasattr(row, 'label') and '\\n' in str(row.label):
-            label = str(row.label).replace('\\n', '\n')  # JSON 문자열에서 \n 처리
+
+        # 라벨 처리 개선
+        if hasattr(row, 'label'):
+            raw_label = str(row.label)
+            print(f"🏷️ 처리 중인 라벨: '{raw_label}'")  # 디버깅
+
+            # \\n을 실제 줄바꿈으로 변환
+            if '\\n' in raw_label:
+                label = raw_label.replace('\\n', '\n')
+                print(f"   → 변환 후: '{label}'")
+            else:
+                # 자동 줄바꿈 (긴 텍스트용)
+                label = "\n".join(textwrap.wrap(raw_label, width=15))
         else:
-            label = "\n".join(textwrap.wrap(str(row.label), width=10))
+            label = "라벨 없음"
 
         # ▼ 아이템 표시 (duration <= 1 인 경우)
         if row.duration <= 1:
@@ -136,21 +171,27 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
             while current_layer in day_event_offsets.values():
                 current_layer += 1
             day_event_offsets[date_key] = current_layer
-            layer_y = 1.3 + current_layer * layer_gap  # 년도 위 계단식 y 위치 (더 높게)
+
+            # 일일 이벤트도 최대 높이 제한
+            MAX_DAY_LAYERS = 4  # 더 많은 레이어 허용
+            if current_layer >= MAX_DAY_LAYERS:
+                current_layer = current_layer % MAX_DAY_LAYERS
+
+            layer_y = 1.5 + current_layer * layer_gap  # 시작 위치를 더 올림
 
             # ▼ 표시
-            ax.text(x, 0.15 + 0.04, '▼', ha='center', va='center', fontsize=14, color=color)
+            ax.text(x, 0.15 + 0.04, '▼', ha='center', va='center', fontsize=20, color=color)
 
             # 선 연결 (▼ 아래 → 위로)
-            ax.plot([x, x], [0.15 + 0.04 - 0.02, layer_y - 0.05], linestyle=":", color=color, linewidth=1)
+            ax.plot([x, x], [0.15 + 0.04 - 0.02, layer_y - 0.05], linestyle=":", color=color, linewidth=2)
 
             # 날짜와 라벨을 위아래로 가깝게 배치
             date_label = f"({row.start.strftime('%Y.%m.%d')})"
-            label_text = str(row.label).replace('\\n', '\n') if hasattr(row, 'label') and '\\n' in str(row.label) else str(row.label)
+            label_text = label
 
             # 날짜를 아래쪽에, 라벨을 바로 위쪽에 배치
-            ax.text(x, layer_y, date_label, ha='center', va='bottom', fontsize=6)
-            ax.text(x, layer_y + 0.12, label_text, ha='center', va='bottom', fontsize=7)
+            ax.text(x, layer_y, date_label, ha='center', va='bottom', fontsize=10)
+            ax.text(x, layer_y + 0.08, label_text, ha='center', va='bottom', fontsize=16)
 
         else:
             start_num = mdates.date2num(row.start)
@@ -172,36 +213,43 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
 
             # 라벨 중앙에 출력 (줄바꿈 포함)
             center_x = mdates.date2num(row.start + pd.Timedelta(days=row.duration / 2))
-            ax.text(center_x, current_bar_y, label, ha='center', va='center', fontsize=8, color='black')
+            ax.text(center_x, current_bar_y, label, ha='center', va='center', fontsize=16, color='black', weight='bold')
 
             # 시작~종료 텍스트 (YYYY.MM–YYYY.MM)
             start_str = row.start.strftime('%Y.%m')
             end_str = row.end.strftime('%Y.%m')
             date_label = f'({start_str}–{end_str})'
-            ax.text(center_x, current_bar_y + 0.25, date_label, ha='center', va='bottom', fontsize=6, color='black')
+            ax.text(center_x, current_bar_y + 0.2, date_label, ha='center', va='bottom', fontsize=10, color='black')
 
-    # 축 정리
-    ax.set_ylim(-0.6, 2.4)
-    ax.set_xlim(timeline_start, timeline_end)
+    # 축 설정 - 정확한 범위로 설정
+    start_date_num = mdates.date2num(timeline_start)
+    end_date_num = mdates.date2num(timeline_end)
+
+    ax.set_xlim(start_date_num, end_date_num)
+    ax.set_ylim(-0.1, 4.0)  # y축 범위를 크게 늘림
     ax.axis('off')
+
+    print(f"📐 X축 범위: {start_date_num} ~ {end_date_num}")
 
     # 범례 추가
     legend_elements = [patches.Patch(facecolor=color, label=category)
                       for category, color in category_colors.items()
                       if category in df['category'].values]
     if legend_elements:
-        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1, 1))
+        ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(0.99, 0.95), fontsize=16)
 
-    plt.tight_layout()
+    # 여백 제거 - 더 공격적으로
+    fig.subplots_adjust(left=0, right=1, top=0.95, bottom=0)  # bottom을 0으로
 
     # 출력 디렉토리 생성
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
-    # 경고 숨기고 저장
+    # 저장 - 완전 여백 제거
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        plt.savefig(output_path, dpi=200, bbox_inches='tight',
-                   facecolor='white', edgecolor='none')
+        # bbox_inches 없이 저장 (matplotlib의 자동 여백 방지)
+        plt.savefig(output_path, dpi=600, facecolor='white', edgecolor='none',
+                   format='png', pil_kwargs={'optimize': True})
 
     plt.close()
     print(f"✅ 간트 차트 저장 완료 → {output_path}")
@@ -228,8 +276,16 @@ def main():
     try:
         df = load_json(input_json)
         print(f"📊 {len(df)}개의 타임라인 항목을 처리합니다.")
-        generate_final_layout_gantt(df, output_path=output_img)
-        print("🎉 타임라인 생성이 완료되었습니다!")
+        result_path = generate_final_layout_gantt(df, output_path=output_img)
+
+        # 파일 생성 확인
+        if os.path.exists(result_path):
+            file_size = os.path.getsize(result_path)
+            print(f"🎉 타임라인 생성 완료! 파일 크기: {file_size:,} bytes")
+            print(f"📁 파일 위치: {os.path.abspath(result_path)}")
+        else:
+            print("❌ 파일 생성 실패!")
+
     except Exception as e:
         print(f"❌ 오류 발생: {e}")
         raise
