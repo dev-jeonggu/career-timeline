@@ -189,7 +189,6 @@ def generate_final_layout_gantt(df, output_path="career_gantt_final.png"):
     ax.set_ylim(-0.6, 2.4)
     ax.set_xlim(timeline_start, timeline_end)
     ax.axis('off')
-    ax.set_title("Career Timeline", fontsize=16, weight='bold', pad=20)
 
     # 범례 추가
     legend_elements = [patches.Patch(facecolor=color, label=category)
