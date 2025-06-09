@@ -1,0 +1,80 @@
+name: Generate Timeline Chart
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'timeline.json' ]
+  workflow_dispatch:
+
+jobs:
+  generate-chart:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Clean existing output
+        run: |
+          echo "기존 output 폴더 정리..."
+          rm -rf output/
+          mkdir -p output
+          echo "새로운 output 디렉토리 생성"
+
+      - name: Verify timeline.json exists
+        run: |
+          if [ ! -f timeline.json ]; then
+            echo "timeline.json 파일이 없습니다!"
+            exit 1
+          fi
+          echo "timeline.json 파일 확인"
+          echo "JSON 내용:"
+          cat timeline.json
+
+      - name: Validate JSON format
+        run: |
+          if ! python3 -m json.tool timeline.json > /dev/null 2>&1; then
+            echo "timeline.json 형식이 올바르지 않습니다!"
+            exit 1
+          fi
+          echo "JSON 형식 검증 완료"
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          pip install matplotlib pandas
+          echo "Python 패키지 설치 완료"
+
+      - name: Install Korean fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-nanum fonts-nanum-coding fonts-dejavu
+          echo "한글 폰트 설치 완료"
+
+      - name: Generate timeline chart
+        run: |
+          echo "타임라인 차트 생성 시작..."
+          python3 generate_timeline_v.6.py
+          
+          if [ -f "output/career_gantt_final.png" ]; then
+            echo "이미지 생성 성공!"
+            ls -la output/
+          else
+            echo "이미지 생성 실패!"
+            exit 1
+          fi
+
+      - name: Force commit new image
+        run: |
+          git config --global user.name 'Timeline Bot'
+          git config --global user.email 'timeline-bot@users.noreply.github.com'
+          
+          # .gitignore 무시하고 강제로 추가
+          git add -f output/career_gantt_final.png
+          git commit -m "chore: regenerate timeline chart ($(date '+%Y-%m-%d %H:%M:%S'))"
+          git push
+          echo "새로운 타임라인 차트가 강제로 업데이트되었습니다!"
