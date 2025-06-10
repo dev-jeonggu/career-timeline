@@ -23,18 +23,18 @@ jobs:
 
       - name: Verify timeline.json exists
         run: |
-          if [ ! -f timeline.json ]; then
-            echo "timeline.json 파일이 없습니다!"
+          if [ ! -f data/timeline.json ]; then
+            echo "data/timeline.json 파일이 없습니다!"
             exit 1
           fi
-          echo "timeline.json 파일 확인"
+          echo "data/timeline.json 파일 확인"
           echo "JSON 내용:"
-          cat timeline.json
+          cat data/timeline.json
 
       - name: Validate JSON format
         run: |
-          if ! python3 -m json.tool timeline.json > /dev/null 2>&1; then
-            echo "timeline.json 형식이 올바르지 않습니다!"
+          if ! python3 -m json.tool data/timeline.json > /dev/null 2>&1; then
+            echo "data/timeline.json 형식이 올바르지 않습니다!"
             exit 1
           fi
           echo "JSON 형식 검증 완료"
