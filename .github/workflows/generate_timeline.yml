@@ -55,10 +55,18 @@ jobs:
           sudo apt-get install -y fonts-nanum fonts-nanum-coding fonts-dejavu
           echo "한글 폰트 설치 완료"
 
+      - name: List files for debugging
+        run: |
+          echo "현재 디렉토리 구조:"
+          ls -la
+          echo "Python 파일 목록:"
+          ls -la *.py || echo "루트에 Python 파일 없음"
+
       - name: Generate timeline chart
         run: |
           echo "타임라인 차트 생성 시작..."
-          python3 generate_timeline_v.6.py
+          # main.py 실행
+          python3 main.py
           
           if [ -f "output/career_gantt_final.png" ]; then
             echo "이미지 생성 성공!"
