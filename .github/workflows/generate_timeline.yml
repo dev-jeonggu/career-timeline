@@ -3,7 +3,7 @@ name: Generate Timeline Chart
 on:
   push:
     branches: [ main ]
-    paths: [ 'timeline.json' ]
+    paths: [ 'data/timeline.json' ]
   workflow_dispatch:
 
 jobs:
